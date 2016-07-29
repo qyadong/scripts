@@ -72,8 +72,9 @@ croot
 
 #build_gsd
 build_gsd(){
-
+cd $build_dir
 source build/envsetup.sh
+./device/intel/mixins/mixin-update
 rm $build_dir/vendor/intel/fw/evmm/prebuilts/*
 lunch gsd_simics-userdebug
 make gptimage -j8 2>&1 |tee build_gsd.log
@@ -89,7 +90,10 @@ make gptimage -j8 2>&1 |tee build_gsd_tipc.log
 #build bxt-p
 build_bxtp_abl(){
 
+cd $build_dir
+
 source build/envsetup.sh
+./device/intel/mixins/mixin-update
 rm $build_dir/vendor/intel/fw/evmm/prebuilts/*
 
 lunch lunch bxtp_abl-userdebug
