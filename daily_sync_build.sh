@@ -18,8 +18,6 @@ else
 	touch $DAILY_PATH/record.log
 fi
 
-echo $now >> $DAILY_PATH/record.log
-
 #get code
 get_code() {
 cd $build_dir
@@ -27,7 +25,9 @@ cd $build_dir
 echo "init manifests"
 /home/yadong/bin/repo init -u ssh://android.intel.com/manifests -b android/master -m r0
 echo "sync code for all repo projects.."
-/home/yadong/bin/repo sync -j5
+/home/yadong/bin/repo sync -c -j5
+
+/home/yadong/bin/repo sync -c -j5
 
 echo $now >> $DAILY_PATH/record.log
 
@@ -96,7 +96,7 @@ source build/envsetup.sh
 ./device/intel/mixins/mixin-update
 rm $build_dir/vendor/intel/fw/evmm/prebuilts/*
 
-lunch lunch bxtp_abl-userdebug
+lunch bxtp_abl-userdebug
 make ABL_BUILD_FROM_SRC=true flashfiles -j8 2>&1 |tee build_bxtp_abl.log
 
 mmm system/core/trusty/libtrusty
