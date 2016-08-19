@@ -25,9 +25,22 @@ cd $build_dir
 echo "init manifests"
 /home/yadong/bin/repo init -u ssh://android.intel.com/manifests -b android/master -m r0
 echo "sync code for all repo projects.."
-/home/yadong/bin/repo sync -c -j5
+/home/yadong/bin/repo sync -j1 -f 2>&1 |tee sync_code.log
 
-/home/yadong/bin/repo sync -c -j5
+while grep "cannot initialize work tree" ./sync_code.log ; do
+#delete corrupted .git/
+for i in `grep -o "pack-[0-9a-zA-Z]\+\.pack$" ./sync_code.log`; do name=`find ./ -name $i |grep -o "[0-9a-zA-Z\\\/\.\_\-]\+\.git"` && echo $name && rm -rf $name; done
+
+/home/yadong/bin/repo sync 2>&1  |tee sync_code.log
+done
+
+#/home/yadong/bin/repo forall -vc "git reset --hard"
+
+#echo "update manifests..."
+#cd .repo/manifests
+#git pull origin android/master
+
+#/home/yadong/bin/repo sync
 
 echo $now >> $DAILY_PATH/record.log
 
@@ -116,7 +129,7 @@ send_mail() {
 email_body=$build_dir/email.log
 
  echo "sending mail..."
-  if [ -f "$build_dir/out/target/product/gsd_simics/gsd_simics.img" ] ; then
+  if [ -f "$build_dir/out/target/product/bxtp/system.img" ] ; then
       email_subject="1A Trusty Daily Build Successful"
       echo "Today's 1A Trusty Daily Build Successful! " >> $email_body
       echo "Image can be found here @ http://10.239.92.141/$build_dir/out  " >> $email_body
@@ -154,7 +167,7 @@ cd $build_dir
 
 get_code
 
-build_gsd
+#build_gsd
 
 build_bxtp_abl
 
