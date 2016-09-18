@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source /home/yadong/.bashrc
+
 export LAST_COMMIT_FILE=lastcommit.log
 export CUR_COMMIT_FILE=currentcommit.log
 
@@ -28,10 +30,33 @@ echo "sync code for all repo projects.."
 /home/yadong/bin/repo sync -j1 -f 2>&1 |tee sync_code.log
 
 while grep "cannot initialize work tree" ./sync_code.log ; do
-#delete corrupted .git/
-for i in `grep -o "pack-[0-9a-zA-Z]\+\.pack$" ./sync_code.log`; do name=`find ./ -name $i |grep -o "[0-9a-zA-Z\\\/\.\_\-]\+\.git"` && echo $name && rm -rf $name; done
+	#delete corrupted .git/
+	#for i in `grep -o "pack-[0-9a-zA-Z]\+\.pack$" ./sync_code.log`; do name=`find ./ -name $i |grep -o "[0-9a-zA-Z\\\/\.\_\-]\+\.git"` && echo $name && rm -rf $name; done
 
-/home/yadong/bin/repo sync 2>&1  |tee sync_code.log
+	for string in `grep "^fatal.*(.*)" ./sync_code.log |cut -d '.' -f2- |cut -d ')' -f1`
+	do
+		string=${string%)*}
+		#echo $string
+
+		while [[ $string =~ "/" ]]
+		do
+			string=${string#*/}
+		done
+
+		echo $string
+
+		name=`find ./.repo/projects -name $string |grep -o "[0-9a-zA-Z\\\/\.\_\-]\+\.git"`
+
+		if [[ $name != "" ]]; then
+			echo "Delete corrupted git: $name"
+			rm -rf $name
+		fi
+
+	done
+
+	rm -rf $build_dir/*
+	#/home/yadong/bin/repo forall -vc "git reset --hard"
+	/home/yadong/bin/repo sync 2>&1  |tee sync_code.log
 done
 
 #/home/yadong/bin/repo forall -vc "git reset --hard"
@@ -72,32 +97,14 @@ croot
 
 }
 
-#build android kernel
-#build_android_kernel(){
+#apply patch
+apply_patch(){
+prj_path=$1
+prj_name=$2
+patch_id=$3
 
-#}
-
-#copy image
-copy_image(){
-croot
-
-}
-
-#build_gsd
-build_gsd(){
-cd $build_dir
-source build/envsetup.sh
-./device/intel/mixins/mixin-update
-rm $build_dir/vendor/intel/fw/evmm/prebuilts/*
-lunch gsd_simics-userdebug
-make gptimage -j8 2>&1 |tee build_gsd.log
-
-# package the ipc-unit test
-mmm system/core/trusty/libtrusty
-mmm system/core/trusty/libtrusty/tipc-test
-
-croot
-make gptimage -j8 2>&1 |tee build_gsd_tipc.log
+cd $prj_path && git fetch ssh://yadongqi@android.intel.com:29418/$prj_name $patch_id && git cherry-pick FETCH_HEAD
+cd -
 }
 
 #build bxt-p
@@ -105,18 +112,36 @@ build_bxtp_abl(){
 
 cd $build_dir
 
-source build/envsetup.sh
-./device/intel/mixins/mixin-update
-rm $build_dir/vendor/intel/fw/evmm/prebuilts/*
+cd vendor/intel/abl/bootloader_apl && git reset --hard 8863d277a7e8c3cda57df8f5e02deb1281e9f831 && cd -
+#cd system/core/trusty && git am /disk2/projects/daily_build/0001-Trusty-Add-result-check-on-tipc-test-cases.patch && cd -
+vendor/intel/utils/autopatch.py 522989 522985 520033 520429 510854 523435
 
+./device/intel/mixins/mixin-update
+#rm $build_dir/vendor/intel/fw/evmm/prebuilts/*
+
+source build/envsetup.sh
 lunch bxtp_abl-userdebug
-make ABL_BUILD_FROM_SRC=true flashfiles -j8 2>&1 |tee build_bxtp_abl.log
+
+#apply_patch bionic            a/aosp/platform/bionic            refs/changes/89/510889/4 
+#apply_patch bootable/recovery a/aosp/platform/bootable/recovery refs/changes/05/510905/4
+#apply_patch system/core       a/aosp/platform/system/core       refs/changes/06/510906/3
+#apply_patch system/sepolicy   a/aosp/platform/system/sepolicy   refs/changes/07/510907/3
+#apply_patch bionic            a/aosp/platform/bionic            refs/changes/12/510912/4
+#apply_patch build             a/aosp/platform/build             refs/changes/05/514205/3
+#apply_patch frameworks/base   a/aosp/platform/frameworks/base   refs/changes/66/516366/2
+#apply_patch frameworks/base   a/aosp/platform/frameworks/base   refs/changes/76/522276/2
+#apply_patch system/core       a/aosp/platform/system/core       refs/changes/13/510913/4
+#apply_patch system/core       a/aosp/platform/system/core       refs/changes/58/518958/1
+#apply_patch prebuilts/sdk     a/aosp/platform/prebuilts/sdk     refs/changes/57/518957/1
+
+
+make flashfiles -j8 2>&1 |tee build_bxtp_abl.log
 
 mmm system/core/trusty/libtrusty
 mmm system/core/trusty/libtrusty/tipc-test
 
 croot
-make ABL_BUILD_FROM_SRC=true flashfiles -j8 2>&1 |tee build_bxtp_abl_tipc.log
+make flashfiles -j8 2>&1 |tee build_bxtp_abl_tipc.log
 }
 
 #copy_image_gsd
@@ -129,11 +154,11 @@ send_mail() {
 email_body=$build_dir/email.log
 
  echo "sending mail..."
-  if [ -f "$build_dir/out/target/product/bxtp/system.img" ] ; then
+  if [[ $(grep -o "make completed successfully" $build_dir/build_bxtp_abl_tipc.log) != "" ]] ; then
       email_subject="1A Trusty Daily Build Successful"
       echo "Today's 1A Trusty Daily Build Successful! " >> $email_body
-      echo "Image can be found here @ http://10.239.92.141/$build_dir/out  " >> $email_body
-      echo "Please refer to doc https://docs.google.com/document/d/1-hqZ9qwe3fznhXTzu-NYiZOnwFQNK1LAxEDMTdrq-ag/edit?pli=1 for how to use the image" >>$email_body
+      echo "Image can be found here @ http://10.239.92.141/IMAGES/$build_dir  " >> $email_body
+      echo "Please refer to doc https://docs.google.com/document/d/1IpYgykgF2L9ML7olSv1BpFeUEWoBHOHboTYvnucRGNg/edit#heading=h.qb88tgkvuvcj for how to use the image" >>$email_body
 
 
   else
